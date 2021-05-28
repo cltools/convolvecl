@@ -34,7 +34,7 @@ Reference/API
 
 '''
 
-__version__ = '2021.3.12'
+__version__ = '2021.5.28'
 
 __all__ = [
     'mixmat',
@@ -113,13 +113,18 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
     if l2max is None or l2max > len(cl2)-1:
         l2max = len(cl2)-1
 
-    s1, s2 = spins1
-    S1, S2 = spins2
+    s1, S1 = spins1
+    s2, S2 = spins2
+    s, S = s1+s2, S1+S2
 
-    same_spins = (s1 == S1) and (s2 == S2)
-    symmetric = (s1 == s2) and (S1 == S2)
+    lmin = max(abs(s), abs(S))
+    l1min = max(abs(s1), abs(S1))
 
-    twol2p1 = 2*np.arange(l2max+1, dtype=float) + 1
+    same_spins = (s == S) and (s1 == S1)
+    symmetric = (s == -s1) and (S == -S1)
+
+    twol2p1cl2 = 2*np.arange(l2max+1, dtype=float) + 1
+    twol2p1cl2 *= cl2[:l2max+1]
 
     m = np.zeros((lmax+1, l1max+1))
 
@@ -134,22 +139,24 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
         indices = np.ndindex(lmax+1, l1max+1)
 
     for l, l1 in indices:
-        l2min, l2max_, thr1 = wigner_3j_l(l, l1, -s1, -s2)
-        if same_spins:
-            thr2 = thr1
-        else:
-            _, _, thr2 = wigner_3j_l(l, l1, -S1, -S2)
-        if l2min < l2max:
+        if l < lmin or l1 < l1min:
+            continue
+        l2min, l2max_, thr = wigner_3j_l(l, l1, s, -s1)
+        if l2min <= l2max:
+            if same_spins:
+                thr *= thr
+            else:
+                _, _, thr2 = wigner_3j_l(l, l1, S, -S1)
+                thr *= thr2
             l2min = int(l2min)
             if l2max < l2max_:
                 l2max_ = int(l2max)
             else:
                 l2max_ = int(l2max_)
-            u = thr1[:l2max_-l2min+1]
-            u *= thr2[:l2max_-l2min+1]
-            u *= twol2p1[l2min:l2max_+1]
+            u = thr[:l2max_-l2min+1]
+            u *= twol2p1cl2[l2min:l2max_+1]
 
-            m[l, l1] = np.dot(u, cl2[l2min:l2max_+1])
+            m[l, l1] = u.sum()
 
     if symmetric:
         d = m.diagonal().copy()
