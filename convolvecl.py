@@ -34,7 +34,7 @@ Reference/API
 
 '''
 
-__version__ = '2021.5.28'
+__version__ = '2021.6.23'
 
 __all__ = [
     'mixmat',
@@ -121,46 +121,34 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
     l1min = max(abs(s1), abs(S1))
 
     same_spins = (s == S) and (s1 == S1)
-    symmetric = (s == -s1) and (S == -S1)
+    symmetric = (s2 == 0) and (S2 == 0)
 
     twol2p1cl2 = 2*np.arange(l2max+1, dtype=float) + 1
     twol2p1cl2 *= cl2[:l2max+1]
 
     m = np.zeros((lmax+1, l1max+1))
 
-    if symmetric:
-        if l1max >= lmax:
-            indices = zip(*np.triu_indices(lmax+1, 0, l1max+1))
-            lsq = lmax
+    for l in range(lmin, lmax):
+        if symmetric and l <= l1max:
+            l1min_ = l
         else:
-            indices = zip(*np.tril_indices(lmax+1, 0, l1max+1))
-            lsq = l1max
-    else:
-        indices = np.ndindex(lmax+1, l1max+1)
-
-    for l, l1 in indices:
-        if l < lmin or l1 < l1min:
-            continue
-        l2min, l2max_, thr = wigner_3j_l(l, l1, s, -s1)
-        if l2min <= l2max:
+            l1min_ = l1min
+        for l1 in range(l1min_, l1max+1):
+            if abs(l-l1) > l2max:
+                continue
+            l2min, l2max_, thr = wigner_3j_l(l, l1, s, -s1)
             if same_spins:
                 thr *= thr
             else:
                 _, _, thr2 = wigner_3j_l(l, l1, S, -S1)
                 thr *= thr2
-            l2min = int(l2min)
-            if l2max < l2max_:
-                l2max_ = int(l2max)
-            else:
-                l2max_ = int(l2max_)
-            u = thr[:l2max_-l2min+1]
-            u *= twol2p1cl2[l2min:l2max_+1]
-
-            m[l, l1] = u.sum()
+            l2min, l2max_ = int(l2min), min(int(l2max_), l2max)
+            m[l, l1] = np.dot(thr[:l2max_-l2min+1], twol2p1cl2[l2min:l2max_+1])
 
     if symmetric:
+        lblk = min(lmax, l1max)
         d = m.diagonal().copy()
-        m[:lsq, :lsq] += m[:lsq, :lsq].T
+        m[:lblk, :lblk] += m[:lblk, :lblk].T
         np.fill_diagonal(m, d)
 
     m *= (2*np.arange(l1max+1) + 1)/FOUR_PI
