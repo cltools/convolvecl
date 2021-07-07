@@ -34,7 +34,7 @@ Reference/API
 
 '''
 
-__version__ = '2021.6.23'
+__version__ = '2021.7.6'
 
 __all__ = [
     'mixmat',
@@ -128,7 +128,7 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
 
     m = np.zeros((lmax+1, l1max+1))
 
-    for l in range(lmin, lmax):
+    for l in range(lmin, lmax+1):
         if symmetric and l <= l1max:
             l1min_ = l
         else:
@@ -146,9 +146,9 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
             m[l, l1] = np.dot(thr[:l2max_-l2min+1], twol2p1cl2[l2min:l2max_+1])
 
     if symmetric:
-        lblk = min(lmax, l1max)
+        nblk = min(lmax+1, l1max+1)
         d = m.diagonal().copy()
-        m[:lblk, :lblk] += m[:lblk, :lblk].T
+        m[:nblk, :nblk] += m[:nblk, :nblk].T
         np.fill_diagonal(m, d)
 
     m *= (2*np.arange(l1max+1) + 1)/FOUR_PI
