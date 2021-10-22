@@ -2,6 +2,10 @@
 #
 # author: Nicolas Tessore <n.tessore@ucl.ac.uk>
 # license: MIT
+#
+# cython: language_level=3, boundscheck=False
+# distutils: extra_compile_args=['-fopenmp', '-Ofast']
+# distutils: extra_link_args=['-fopenmp']
 '''
 
 Convolve angular power spectra (:mod:`convolvecl`)
@@ -34,18 +38,20 @@ Reference/API
 
 '''
 
-__version__ = '2021.7.6'
-
 __all__ = [
     'mixmat',
 ]
 
-
 import numpy as np
-from wigner import wigner_3j_l
+from libc.stdlib cimport abort, malloc, free, abs
+from cython.parallel import parallel, prange
+cdef extern from "wigner_3j_l.c":
+    int wigner_3j_l(double l2, double l3, double m2, double m3,
+                    double* l1min_out, double* l1max_out, double* thrcof,
+                    int ndim) nogil
 
 
-FOUR_PI = 4*np.pi
+cdef double FOUR_PI = 4*np.pi
 
 
 def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
@@ -113,44 +119,78 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
     if l2max is None or l2max > len(cl2)-1:
         l2max = len(cl2)-1
 
-    s1, S1 = spins1
-    s2, S2 = spins2
-    s, S = s1+s2, S1+S2
+    cdef int lmax_ = lmax
+    cdef int l1max_ = l1max
+    cdef int l2max_ = l2max
 
-    lmin = max(abs(s), abs(S))
-    l1min = max(abs(s1), abs(S1))
+    cdef int s1 = spins1[0]
+    cdef int S1 = spins1[1]
+    cdef int s2 = spins2[0]
+    cdef int S2 = spins2[1]
+    cdef int s = s1+s2
+    cdef int S = S1+S2
 
-    same_spins = (s == S) and (s1 == S1)
-    symmetric = (s2 == 0) and (S2 == 0)
+    cdef int lmin = max(abs(s), abs(S))
+    cdef int l1min = max(abs(s1), abs(S1))
 
+    cdef int same_spins = (s == S) and (s1 == S1)
+    cdef int symmetric = (s2 == 0) and (S2 == 0)
+
+    # precompute (2l + 1) cl2
     twol2p1cl2 = 2*np.arange(l2max+1, dtype=float) + 1
     twol2p1cl2 *= cl2[:l2max+1]
 
+    # output matrix
     m = np.zeros((lmax+1, l1max+1))
 
-    for l in range(lmin, lmax+1):
-        if symmetric and l <= l1max:
-            l1min_ = l
-        else:
-            l1min_ = l1min
-        for l1 in range(l1min_, l1max+1):
-            if abs(l-l1) > l2max:
-                continue
-            l2min, l2max_, thr = wigner_3j_l(l, l1, s, -s1)
-            if same_spins:
-                thr *= thr
+    # pure C interface
+    cdef int l2min_int, l2max_int
+    cdef int ndim = lmax+l1max+1
+    cdef double* l2minmax
+    cdef double* thr
+    cdef double* thr2
+    cdef double* thr_
+    cdef double[::1] twol2p1cl2_ = twol2p1cl2
+    cdef double[::, ::1] m_ = m
+    cdef double mll1
+    cdef int n
+
+    cdef int l, l1, l1min_, l2, i
+    with nogil, parallel():
+        # set up local buffers
+        l2minmax = <double*>malloc(2*sizeof(double))
+        thr = <double*>malloc(ndim*sizeof(double))
+        thr2 = <double*>malloc(ndim*sizeof(double))
+        if not l2minmax or not thr or not thr2:
+            abort()
+
+        for l in prange(lmin, lmax_+1, schedule='dynamic'):
+            if symmetric and l <= l1max_:
+                l1min_ = l
             else:
-                _, _, thr2 = wigner_3j_l(l, l1, S, -S1)
-                thr *= thr2
-            l2min, l2max_ = int(l2min), min(int(l2max_), l2max)
-            m[l, l1] = np.dot(thr[:l2max_-l2min+1], twol2p1cl2[l2min:l2max_+1])
+                l1min_ = l1min
+            for l1 in range(l1min_, l1max_+1):
+                if abs(l-l1) > l2max_:
+                    continue
+                wigner_3j_l(l, l1, s, -s1, &l2minmax[0], &l2minmax[1], thr, ndim)
+                l2min_int = int(l2minmax[0])
+                l2max_int = int(l2minmax[1]) if l2minmax[1] < l2max_ else l2max_
+                n = l2max_int - l2min_int + 1
+                if same_spins:
+                    thr_ = thr
+                else:
+                    wigner_3j_l(l, l1, S, -S1, &l2minmax[0], &l2minmax[1], thr2, ndim)
+                    thr_ = thr2
+                mll1 = 0
+                for i in range(n):
+                    mll1 = mll1 + twol2p1cl2_[l2min_int+i]*thr[i]*thr_[i]
+                m_[l, l1] = (2*l1 + 1)/FOUR_PI*mll1
+                if symmetric:
+                    m_[l1, l] = (2*l + 1)/FOUR_PI*mll1
 
-    if symmetric:
-        nblk = min(lmax+1, l1max+1)
-        d = m.diagonal().copy()
-        m[:nblk, :nblk] += m[:nblk, :nblk].T
-        np.fill_diagonal(m, d)
-
-    m *= (2*np.arange(l1max+1) + 1)/FOUR_PI
+        # free local buffers
+        free(l2minmax)
+        free(thr)
+        free(thr2)
 
     return m
