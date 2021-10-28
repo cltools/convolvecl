@@ -3,7 +3,7 @@
 # author: Nicolas Tessore <n.tessore@ucl.ac.uk>
 # license: MIT
 #
-# cython: language_level=3, boundscheck=False
+# cython: language_level=3, boundscheck=False, embedsignature=True
 # distutils: extra_compile_args=['-fopenmp', '-Ofast']
 # distutils: extra_link_args=['-fopenmp']
 '''
@@ -185,7 +185,7 @@ def mixmat(cl2, lmax=None, l1max=None, l2max=None, spins1=(0, 0),
                 for i in range(n):
                     mll1 = mll1 + twol2p1cl2_[l2min_int+i]*thr[i]*thr_[i]
                 m_[l, l1] = (2*l1 + 1)/FOUR_PI*mll1
-                if symmetric:
+                if symmetric and l1 <= lmax_ and l <= l1max_:
                     m_[l1, l] = (2*l + 1)/FOUR_PI*mll1
 
         # free local buffers
