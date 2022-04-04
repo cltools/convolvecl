@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.testing as npt
 import unittest
-from convolvecl import mixmat
+from convolvecl import mixmat, mixmat_eb
 
 
 class TestMixmat(unittest.TestCase):
@@ -58,6 +58,33 @@ class TestMixmat(unittest.TestCase):
 
         npt.assert_allclose(mixmat(cl1)@cl2, cl)
         npt.assert_allclose(mixmat(cl2)@cl1, cl)
+
+    def test_multi(self):
+        m = mixmat([self.cl, 2*self.cl])
+
+        npt.assert_array_equal(m.shape, (2, self.lmax+1, self.lmax+1))
+        npt.assert_allclose(m[0], m[1]/2)
+
+
+class TestMixmatEb(unittest.TestCase):
+
+    def setUp(self):
+        self.lmax = 1000
+        self.twolp1 = 2*np.arange(self.lmax+1) + 1
+        self.cl = 1/(1+np.arange(self.lmax+1))**2
+
+    def test_spin_00(self):
+        m = mixmat_eb(self.cl)
+
+        npt.assert_equal(m.shape, (3, self.lmax+1, self.lmax+1))
+        npt.assert_allclose(m[0], m[2])
+        npt.assert_allclose(m[1], 0)
+
+    def test_spin_22(self):
+        m = mixmat_eb(self.cl, spin=(2, 2))
+
+        npt.assert_equal(m.shape, (3, self.lmax+1, self.lmax+1))
+        npt.assert_allclose(m[0] + m[1], m[2])
 
 
 if __name__ == '__main__':

@@ -31,6 +31,7 @@ Reference/API
    :nosignatures:
 
    mixmat
+   mixmat_eb
 
 '''
 
@@ -38,6 +39,7 @@ __version__ = '2022.4.4'
 
 __all__ = [
     'mixmat',
+    'mixmat_eb',
 ]
 
-from ._mixmat import mixmat
+from ._mixmat import mixmat, mixmat_eb

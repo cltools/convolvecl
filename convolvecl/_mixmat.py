@@ -69,6 +69,17 @@ def _mixmat_symm_same(m, v, lmin, lmax, s1, s2):
                 m[i][l2, l1] = (2*l1+1)*t
 
 
+@njit(nogil=True, parallel=True, cache=True)
+def _twiddle_eb(m):
+    for l1 in prange(m.shape[-2]):
+        for l2 in prange(m.shape[-1]):
+            i, j = (l1+l2) % 2, (l1+l2+1) % 2
+            mi = m[i, ..., l1, l2]
+            mj = m[j, ..., l1, l2]
+            m[0, ..., l1, l2] = mi
+            m[1, ..., l1, l2] = mj
+
+
 def mixmat(cl, l1max=None, l2max=None, l3max=None, spin=(0, 0), spin_out=None):
     r'''compute the mixing matrix for an angular power spectrum
 
@@ -97,9 +108,16 @@ def mixmat(cl, l1max=None, l2max=None, l3max=None, spin=(0, 0), spin_out=None):
     Returns
     -------
     mat : (l1max+1, l2max+1) array
-        Mixing matrix for given `cl2` and spin weights.
+        Mixing matrix for given ``cl`` and spin weights.
+
+    See Also
+    --------
+    mixmat_eb : Compute the mixing matrix for E/B-mode angular power spectra
 
     '''
+
+    cl = np.asanyarray(cl)
+    *ncl, n = cl.shape
 
     if l1max is None:
         l1max = n-1
@@ -143,5 +161,57 @@ def mixmat(cl, l1max=None, l2max=None, l3max=None, spin=(0, 0), spin_out=None):
             _mixmat_full_same(m, v, l1min, l2min, l1max, l2max, s1, s2)
         else:
             _mixmat_full(m, v, l1min, l2min, l1max, l2max, s1, s2, s1_, s2_)
+
+    return m
+
+
+def mixmat_eb(cl, l1max=None, l2max=None, l3max=None, spin=(0, 0),
+              spin_out=None):
+    r'''compute the E/B-mode mixing matrix for an angular power spectrum
+
+    Equivalent to :func:`mixmat`, but computes the mixing matrices for E/B-mode
+    angular power spectra.
+
+    Parameters
+    ----------
+    cl : array_like
+        Angular power spectrum of the mixing matrix.
+    l1max : int, optional
+        Maximum output mode. If not given, the size of ``cl`` is used.
+    l2max : int, optional
+        Maximum input mode. If not given, the value of ``l1max`` is used.
+    l3max : int, optional
+        Maximum mode for summation. If not given, all ``cl`` values are summed.
+    spin : (2,) tuple of int
+        Spin weights of the input angular power spectrum which will be
+        multiplied by the mixing matrix.
+    spin_out : (2,) tuple of int
+        Spin weights of the output angular power spectrum after the mixing
+        matrix has been applied.
+
+    Returns
+    -------
+    mat : (3, l1max+1, l2max+1) array
+        Mixing matrix for given ``cl`` and spin weights.  The 3 components are
+        the EE-EE (or BB-BB) mixing matrix :math:`W^{++}`, the EE-BB (or BB-EE)
+        mixing matrix :math:`W^{--}`, and the EB-EB mixing matrix :math:`W^{++}
+        + W^{--}`.
+
+    See Also
+    --------
+    mixmat : Compute the mixing matrix without E/B-mode decomposition.
+
+    '''
+
+    cl = np.asanyarray(cl)
+    xl = np.zeros((3, *cl.shape))
+    xl[0, 0::2] = cl[0::2]
+    xl[1, 1::2] = cl[1::2]
+    xl[2] = cl
+
+    m = mixmat(xl, l1max=l1max, l2max=l2max, l3max=l3max, spin=spin,
+               spin_out=spin_out)
+
+    _twiddle_eb(m)
 
     return m
