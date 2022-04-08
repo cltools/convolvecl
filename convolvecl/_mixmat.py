@@ -73,8 +73,11 @@ def _mixmat_symm_same(m, v, lmin, lmax, s1, s2):
 def _twiddle_eb(m):
     for l1 in prange(m.shape[-2]):
         for l2 in prange(m.shape[-1]):
-            i, j = (l1+l2) % 2, (l1+l2+1) % 2
-            m[[0, 1], ..., l1, l2] = m[[i, j], ..., l1, l2]
+            tmp = np.empty(m.shape[1:-2])
+            if (l1+l2) % 2 == 1:
+                tmp[...] = m[0, ..., l1, l2]
+                m[0, ..., l1, l2] = m[1, ..., l1, l2]
+                m[1, ..., l1, l2] = tmp
 
 
 def mixmat(cl, l1max=None, l2max=None, l3max=None, spin=(0, 0), spin_out=None):
