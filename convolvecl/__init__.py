@@ -35,7 +35,7 @@ Reference/API
 
 '''
 
-__version__ = '2022.4.8'
+__version__ = '2022.5.10'
 
 __all__ = [
     'mixmat',
